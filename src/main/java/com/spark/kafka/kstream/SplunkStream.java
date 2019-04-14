@@ -49,14 +49,21 @@ public class SplunkStream {
     static String IND_STORE_NAME = System.getProperty("indicator.store", "indicator-store");
     static KafkaStreams splunkStream;
 
+    public SplunkStream() {
+        TestUtils test = new TestUtils();
+        props = test.getProperties();
+    }
+
     public SplunkStream(String propFile, String appServer) {
         this.propFile = propFile;
         this.APPLICATION_SERVER_CONFIG = appServer;
+        readProps();
         this.props.put(StreamsConfig.APPLICATION_SERVER_CONFIG, this.APPLICATION_SERVER_CONFIG);
     }
 
     public SplunkStream(String propFile, String appID, String brokers, String inputTopic) {
         this.propFile = propFile;
+        readProps();
         this.APPLICATION_ID_CONFIG = appID;
         this.INPUT_TOPIC = inputTopic;
         this.BOOTSTRAP_SERVERS_CONFIG = brokers;
@@ -81,36 +88,35 @@ public class SplunkStream {
     }
 
     public KafkaStreams createSplunkStream() {
-        readProps();
+        //readProps();        
         final ObjectMapper MAPPER = new ObjectMapper();
-        String SPLUNK_INVENTORY_TOPIC = props.getProperty("splunk.inventory.topic");
-        String SPLUNK_OUTPUT_TOPIC = props.getProperty("splunk.filtered.topic");
+        String SPLUNK_INVENTORY_TOPIC = props.getProperty("splunk.inventory.topic", "splunk-ggi-filter-list");
+        String SPLUNK_OUTPUT_TOPIC = props.getProperty("splunk.filtered.topic", "splunk-filtered-topic");
         INPUT_TOPIC = props.getProperty("input.topic");
         LOGGER.info("Building Stream with {}", INPUT_TOPIC);
         StreamsBuilder builder = new StreamsBuilder();
 
-        KTable<String, String> invstream = builder.stream(INPUT_TOPIC, Consumed.with(Serdes.String(), Serdes.String()))
-                .mapValues((String value) -> {
-                    try {
-                        JsonNode json = MAPPER.readTree(value);
-                        ObjectNode returnJson = MAPPER.createObjectNode();
-                        returnJson.put("deviceName", json.get("deviceName"));
-                        returnJson.put("indicatorName", json.get("indicatorName"));
-                        //returnJson.put("format", json.get("format"));                        
-                        return MAPPER.readTree(returnJson.toString());
-                    } catch (Exception e) {
-                        // TODO Auto-generated catch block
-                        LOGGER.error(e);
-                        return null;
-                    }
-                })
-                .map((key, value) -> KeyValue.pair(value.get("deviceName").textValue() + value.get("indicatorName").textValue(), value.toString()))
-                .groupByKey()
-                .reduce((aggValue, newValue) -> {
-                    return newValue;
-                }, Materialized.<String, String, KeyValueStore<Bytes, byte[]>>as(INV_STORE_NAME).withKeySerde(Serdes.String())
-                        .withValueSerde(Serdes.String()));
-
+//        KTable<String, String> invtable = builder.stream(INPUT_TOPIC, Consumed.with(Serdes.String(), Serdes.String()))
+//                .mapValues((String value) -> {
+//                    try {
+//                        JsonNode json = MAPPER.readTree(value);
+//                        ObjectNode returnJson = MAPPER.createObjectNode();
+//                        returnJson.put("deviceName", json.get("deviceName"));
+//                        returnJson.put("indicatorName", json.get("indicatorName"));
+//                        //returnJson.put("format", json.get("format"));                        
+//                        return MAPPER.readTree(returnJson.toString());
+//                    } catch (Exception e) {
+//                        // TODO Auto-generated catch block
+//                        LOGGER.error(e);
+//                        return null;
+//                    }
+//                })
+//                .map((key, value) -> KeyValue.pair(value.get("deviceName").textValue() + value.get("indicatorName").textValue(), value.toString()))
+//                .groupByKey()
+//                .reduce((aggValue, newValue) -> {
+//                    return newValue;
+//                }, Materialized.<String, String, KeyValueStore<Bytes, byte[]>>as(INV_STORE_NAME).withKeySerde(Serdes.String())
+//                        .withValueSerde(Serdes.String()));
         KStream<String, String> sevonestream = builder.stream(INPUT_TOPIC, Consumed.with(Serdes.String(), Serdes.String()))
                 .mapValues((String value) -> {
                     try {
@@ -124,17 +130,45 @@ public class SplunkStream {
                         returnJson.put("value", json.get("value"));
                         returnJson.put("time", json.get("time"));
                         //returnJson.put("format", json.get("format"));                        
-                        return MAPPER.readTree(returnJson.toString());
+                        return returnJson;
+                    } catch (Exception e) {
+                        // TODO Auto-generated catch block
+                        System.out.println(value);
+                        System.out.println(e);
+                        LOGGER.error(e);
+                        return null;
+                    }
+                })
+                .map((key, value) -> KeyValue.pair(value.get("deviceName").textValue() + value.get("indicatorName").textValue(), value.toString()));
+        KTable<String, String> invtable = sevonestream
+                .mapValues((String value) -> {
+                    try {
+                        JsonNode json = MAPPER.readTree(value);
+                        ObjectNode returnJson = MAPPER.createObjectNode();
+                        returnJson.put("deviceName", json.get("deviceName"));
+                        returnJson.put("indicatorName", json.get("indicatorName"));
+                        //returnJson.put("format", json.get("format"));                        
+                        return returnJson.toString();
                     } catch (Exception e) {
                         // TODO Auto-generated catch block
                         LOGGER.error(e);
                         return null;
                     }
                 })
-                .map((key, value) -> KeyValue.pair(value.get("deviceName").textValue() + value.get("indicatorName").textValue(), value.toString()));
+                .groupByKey()
+                .reduce((aggValue, newValue) -> {
+                    return newValue;
+                }, Materialized.<String, String, KeyValueStore<Bytes, byte[]>>as(INV_STORE_NAME).withKeySerde(Serdes.String())
+                        .withValueSerde(Serdes.String()));
+        
+        
 
-        KTable<String, String> inventorytable = builder.stream(SPLUNK_INVENTORY_TOPIC, Consumed.with(Serdes.String(), Serdes.String()))
+        KTable<String, String> inventorytable = builder.table(SPLUNK_INVENTORY_TOPIC, 
+                Consumed.with(Serdes.String(), Serdes.String())
+                , Materialized.<String, String, KeyValueStore<Bytes, byte[]>>as(IND_STORE_NAME).withKeySerde(Serdes.String())
+                        .withValueSerde(Serdes.String()))
                 //KTable<String, String> inventorytable = builder.table(SPLUNK_INVENTORY_TOPIC, Consumed.with(Serdes.String(), Serdes.String()))
+                //.filter((k, v) -> v != null)                
                 .mapValues((String value) -> {
                     try {
                         JsonNode json = MAPPER.readTree(value);
@@ -143,34 +177,29 @@ public class SplunkStream {
                         LOGGER.error(e);
                         return null;
                     }
-                })
-                .filter((k, v) -> v.get("toSplunk").textValue().equals("true"))
+                })                
+                //.filter((k, v) -> (v.get("toSplunk").textValue().equalsIgnoreCase("true")))
                 .mapValues((k, v) -> {
-                    //System.out.println(v);
+                    System.out.println(v);
                     return v.toString();
-                })
-                .filter((k, v) -> v != null)
-                .groupByKey()
-                .reduce((aggValue, newValue) -> {
-                    return newValue;
-                }, Materialized.<String, String, KeyValueStore<Bytes, byte[]>>as(IND_STORE_NAME).withKeySerde(Serdes.String())
-                        .withValueSerde(Serdes.String()));
+                });
 
-        inventorytable.toStream().peek((key, value) -> LOGGER.debug("New data into table key = {} value ={}", key, value))
+
+        inventorytable.toStream().peek((key, value) -> LOGGER.debug("New data into table key = "+key+" value ="+value))
                 .filter((k, v) -> {
-                    try {
+                    try {                        
                         JsonNode value = MAPPER.readTree(v);
-                        if (!(value.get("toSplunk").textValue().equalsIgnoreCase("true"))) {
+                        if ((value.get("toSplunk").textValue().equalsIgnoreCase("false"))) {
                             return true;
                         } else {
                             return false;
                         }
-                    } catch (IOException ex) {
+                    }
+                    catch (Exception ex) {
                         //Logger.getLogger(StreamApp.class.getName()).log(Level.SEVERE, null, ex);
                         LOGGER.error(ex);
                         return false;
                     }
-
                 })
                 .mapValues((k, v) -> null)
                 .to(SPLUNK_INVENTORY_TOPIC);
@@ -181,7 +210,7 @@ public class SplunkStream {
         tosplunk.to(SPLUNK_OUTPUT_TOPIC, Produced.with(Serdes.String(), Serdes.String()));
         final Topology topology = builder.build();
         splunkStream = new KafkaStreams(topology, props);
-
+        System.out.println("Stream created");
         LOGGER.trace(splunkStream.toString());
         splunkStream.setUncaughtExceptionHandler((Thread thread, Throwable throwable) -> {
             // add logger
@@ -190,6 +219,7 @@ public class SplunkStream {
 
         });
         splunkStream.start();
+        System.out.println("Stream started");
         return splunkStream;
     }
 

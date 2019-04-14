@@ -5,8 +5,12 @@
  */
 package com.spark.kafka.kstream;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 import javax.ws.rs.GET;
@@ -26,25 +30,35 @@ import org.apache.logging.log4j.Logger;
  * @author t821012
  */
 @Path("/")
-public class RestInterface {
+public final class RestInterface {
     private final String invStoreName;
     private final String indStoreName;
-    private static final ObjectMapper MAPPER = new ObjectMapper(); 
-    private static Logger LOGGER = LogManager.getLogger(RestInterface.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+    
+    private static final Logger LOGGER = LogManager.getLogger(RestInterface.class);
     public RestInterface(){
         invStoreName=SplunkStream.INV_STORE_NAME;
         indStoreName=SplunkStream.IND_STORE_NAME;
     }
-    @Path("/indicators")
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    public String root_path() throws Exception {
+        return "Home Page";
+    }
+    
+    @Path("/messages")
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     public JsonNode all_indicators() throws Exception {
+        System.out.println("GET request for indicators");
+        LOGGER.debug("GET request for indicators");
         JsonNode json=null;
+        //MAPPER.enable(SerializationFeature.INDENT_OUTPUT);
         try {
-            Set<String> indicators = new HashSet<String>() ;
+            ArrayList<String> indicators = new ArrayList<>() ;
             //HostInfo hostInfo = new HostInfo("localhost",port);
             //System.out.println(storeName);
-            KafkaStreams ks = SplunkStream.splunkStream;
+            KafkaStreams ks = SplunkStream.splunkStream;            
             ReadOnlyKeyValueStore<String, String> indStore = SplunkStream.waitUntilStoreIsQueryable(indStoreName, QueryableStoreTypes.keyValueStore(), ks);
                     //ks.store(storeName, QueryableStoreTypes.<String,String>keyValueStore());
             KeyValueIterator<String, String> storeIterator = indStore.all();
@@ -54,12 +68,12 @@ public class RestInterface {
                 //JsonNode json = MAPPER.readTree(kv.value); 
                 indicators.add(kv.value);
             }
-            String message = "{\"indicators\":"+indicators.toString()+"}";
+            String message = "{\"messages\":"+indicators.toString()+"}";
             //System.out.println(indicators);
             json = MAPPER.readTree(message);
                     
-        } catch (Exception e){
-            System.out.println(e);
+        } catch (IOException | InterruptedException e){
+            LOGGER.error(e);
         }
         return json;
         
@@ -69,9 +83,10 @@ public class RestInterface {
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     public JsonNode all_inventory() throws Exception {
+        LOGGER.debug("GET for inventory");
         JsonNode json=null;
         try {
-            Set<String> inventory = new HashSet<String>() ;
+            ArrayList<String> inventory = new ArrayList<>() ;
             //HostInfo hostInfo = new HostInfo("localhost",port);
             //System.out.println(storeName);
             KafkaStreams ks = SplunkStream.splunkStream;
@@ -87,12 +102,10 @@ public class RestInterface {
             String message = "{\"inventory\":"+inventory.toString()+"}";
             //System.out.println(indicators);
             json = MAPPER.readTree(message);                                                            
-        } catch (Exception e){
-            System.out.println(e);
+        } catch (IOException | InterruptedException e){
+            LOGGER.error(e);
         }
         return json;
         
-    }
-    
-    
+    }   
 }

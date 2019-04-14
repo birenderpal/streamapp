@@ -5,36 +5,22 @@
  */
 package com.spark.kafka.kstream;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
+import java.net.URI;
 import java.net.URLDecoder;
-import java.util.Properties;
-import org.apache.kafka.streams.KeyValue;
-import org.apache.kafka.streams.Topology;
-import org.apache.kafka.streams.kstream.Consumed;
-import org.apache.kafka.streams.kstream.Joined;
-import org.apache.kafka.streams.kstream.KStream;
-import org.apache.kafka.streams.kstream.KTable;
-import org.apache.kafka.streams.kstream.Produced;
-import org.apache.kafka.common.serialization.Serdes;
+import javax.ws.rs.core.UriBuilder;
 import org.apache.kafka.streams.KafkaStreams;
-import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
-import org.glassfish.jersey.jackson.JacksonFeature;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.servlet.ServletContainer;
-
+import org.glassfish.grizzly.http.server.HttpServer;
+import org.glassfish.jersey.grizzly2.httpserver.GrizzlyHttpServerFactory;
 /**
  *
  * @author t821012
@@ -47,11 +33,22 @@ public class SplunkApp {
     private final static String HOSTNAME = "0.0.0.0";
     static int port = 8000;
 
-    private static void app() throws IOException, Exception {
+    private static void app(String runType) throws IOException, Exception {
         String appServer = HOSTNAME + ":" + Integer.toString(port);
-        SplunkStream kstream = new SplunkStream(propFile, appServer);
+        SplunkStream kstream=null;
+        switch (runType) {
+            case "test":
+                System.out.println(runType);
+                kstream = new SplunkStream();
+            case "dev":
+                kstream = new SplunkStream(propFile, "splunkapp", "localhost:9092", "dev-topic");
+            case "prod":
+                kstream = new SplunkStream(propFile, appServer);
+        }
+        
 
         KafkaStreams streams = kstream.createSplunkStream();
+        System.out.println("Stream initiated");
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
             @Override
             public void run() {
@@ -59,21 +56,23 @@ public class SplunkApp {
                 streams.close();
             }
         }));
-        ServletContextHandler context
-                = new ServletContextHandler(ServletContextHandler.SESSIONS);
-        context.setContextPath("/");
-
-        Server jettyServer = new Server(port);
-        ResourceConfig rc = new ResourceConfig();
-        rc.register(RestInterface.class);
-        rc.register(JacksonFeature.class);
-
-        ServletContainer sc = new ServletContainer(rc);
-        ServletHolder holder = new ServletHolder(sc);
-        context.addServlet(holder, "/*");
-
-        jettyServer.start();
-
+//        ServletContextHandler context
+//                = new ServletContextHandler(ServletContextHandler.);
+//        context.setContextPath("/");
+//
+//        Server jettyServer = new Server(port);
+//        ResourceConfig rc = new ResourceConfig(RestInterface.class);
+//        rc.register(RestInterface.class);
+//        //rc.register(JacksonFeature.class);
+//
+//        ServletContainer sc = new ServletContainer(rc);
+//        ServletHolder holder = new ServletHolder(sc);
+//        context.addServlet(holder, "/*");
+        URI baseUri = UriBuilder.fromUri("http://" + HOSTNAME + "/").port(port).build();
+        ResourceConfig rc = new ResourceConfig(RestInterface.class);
+        HttpServer server = GrizzlyHttpServerFactory.createHttpServer(baseUri, rc);
+        //jettyServer.start();
+        //final RestInterface restService = new RestInterface();
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
             @Override
             public void run() {
@@ -82,7 +81,7 @@ public class SplunkApp {
                     streams.close();
                     LOGGER.info("Kafka Stream services stopped");
 
-                    jettyServer.stop();
+                    server.stop();
                     LOGGER.info("REST services stopped");
 
                 } catch (Exception ex) {
@@ -93,7 +92,7 @@ public class SplunkApp {
         }));
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         if (args.length == 0) {
             //System.out.println("ERROR: No property file specified");
             LOGGER.info("No property file specified, looking for property file in config directory");
@@ -111,5 +110,6 @@ public class SplunkApp {
         } else {
             propFile = args[0];
         }
+        app("test");
     }
 }
