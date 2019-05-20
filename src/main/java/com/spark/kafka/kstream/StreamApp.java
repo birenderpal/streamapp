@@ -19,31 +19,31 @@ import org.glassfish.grizzly.http.server.HttpServer;
 import org.glassfish.jersey.grizzly2.httpserver.GrizzlyHttpServerFactory;
 /**
  *
- * @author t821012
+ * @author Birender Pal
  */
-public class SplunkApp {
+public class StreamApp {
 
     private static final String logDir = System.getProperty("app.log.dir");
-    private static Logger LOGGER = LogManager.getLogger(SplunkApp.class);
+    private static Logger LOGGER = LogManager.getLogger(StreamApp.class);
     private static String propFile;
     private final static String HOSTNAME = "0.0.0.0";
     static int port = 8000;
 
     private static void app(String runType) throws IOException, Exception {
         String appServer = HOSTNAME + ":" + Integer.toString(port);
-        SplunkStream kstream=null;
+        FilterStream kstream=null;
         switch (runType) {
             case "test":
                 System.out.println(runType);
-                kstream = new SplunkStream();
+                kstream = new FilterStream();
             case "dev":
-                kstream = new SplunkStream(propFile, "splunkapp", "localhost:9092", "dev-topic");
+                kstream = new FilterStream(propFile, "filterapp", "localhost:9092", "dev-topic");
             case "prod":
-                kstream = new SplunkStream(propFile, appServer);
+                kstream = new FilterStream(propFile, appServer);
         }
         
 
-        KafkaStreams streams = kstream.createSplunkStream();
+        KafkaStreams streams = kstream.createFilterStream();
         System.out.println("Stream initiated");
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
             @Override
@@ -92,7 +92,7 @@ public class SplunkApp {
         if (args.length == 0) {
             //System.out.println("ERROR: No property file specified");
             LOGGER.info("No property file specified, looking for property file in config directory");
-            File jarFile = new File(SplunkApp.class.getProtectionDomain().getCodeSource().getLocation().getPath());
+            File jarFile = new File(StreamApp.class.getProtectionDomain().getCodeSource().getLocation().getPath());
             String path = jarFile.getParentFile().getPath();
             try {
                 String decodedPath = URLDecoder.decode(path, "UTF-8");

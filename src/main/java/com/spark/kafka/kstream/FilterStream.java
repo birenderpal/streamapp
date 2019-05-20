@@ -34,34 +34,34 @@ import org.apache.logging.log4j.Logger;
 
 /**
  *
- * @author t821012
+ * @author Birender Pal
  */
-public class SplunkStream {
+public class FilterStream {
 
     private static String propFile;
     private static String APPLICATION_SERVER_CONFIG;
-    private static Logger LOGGER = LogManager.getLogger(SplunkStream.class);
+    private static Logger LOGGER = LogManager.getLogger(FilterStream.class);
     private static Properties props = new Properties();
     private static String APPLICATION_ID_CONFIG;
     private static String BOOTSTRAP_SERVERS_CONFIG;
     private static String INPUT_TOPIC;
-    static String INV_STORE_NAME = System.getProperty("sevone.store", "sevone-store");
-    static String IND_STORE_NAME = System.getProperty("indicator.store", "indicator-store");
-    static KafkaStreams splunkStream;
+    static String INCOMING_STORE_NAME = System.getProperty("incoming.store", "incoming-store");
+    static String OUTGOING_STORE_NAME = System.getProperty("outgoing.store", "filter-store");
+    static KafkaStreams filterStream;
 
-    public SplunkStream() {
+    public FilterStream() {
         TestUtils test = new TestUtils();
         props = test.getProperties();
     }
 
-    public SplunkStream(String propFile, String appServer) {
+    public FilterStream(String propFile, String appServer) {
         this.propFile = propFile;
         this.APPLICATION_SERVER_CONFIG = appServer;
         readProps();
         this.props.put(StreamsConfig.APPLICATION_SERVER_CONFIG, this.APPLICATION_SERVER_CONFIG);
     }
 
-    public SplunkStream(String propFile, String appID, String brokers, String inputTopic) {
+    public FilterStream(String propFile, String appID, String brokers, String inputTopic) {
         this.propFile = propFile;
         readProps();
         this.APPLICATION_ID_CONFIG = appID;
@@ -87,11 +87,11 @@ public class SplunkStream {
         }
     }
 
-    public KafkaStreams createSplunkStream() {
+    public KafkaStreams createFilterStream() {
         //readProps();        
         final ObjectMapper MAPPER = new ObjectMapper();
-        String SPLUNK_INVENTORY_TOPIC = props.getProperty("splunk.inventory.topic", "splunk-ggi-filter-list");
-        String SPLUNK_OUTPUT_TOPIC = props.getProperty("splunk.filtered.topic", "splunk-filtered-topic");
+        String FILTER_TOPIC = props.getProperty("filter.topic", "splunk-ggi-filter-list");
+        String OUTPUT_TOPIC = props.getProperty("filtered.topic", "splunk-filtered-topic");
         INPUT_TOPIC = props.getProperty("input.topic");
         LOGGER.info("Building Stream with {}", INPUT_TOPIC);
         StreamsBuilder builder = new StreamsBuilder();
@@ -115,9 +115,14 @@ public class SplunkStream {
 //                .groupByKey()
 //                .reduce((aggValue, newValue) -> {
 //                    return newValue;
-//                }, Materialized.<String, String, KeyValueStore<Bytes, byte[]>>as(INV_STORE_NAME).withKeySerde(Serdes.String())
+//                }, Materialized.<String, String, KeyValueStore<Bytes, byte[]>>as(INCOMING_STORE_NAME).withKeySerde(Serdes.String())
 //                        .withValueSerde(Serdes.String()));
-        KStream<String, String> sevonestream = builder.stream(INPUT_TOPIC, Consumed.with(Serdes.String(), Serdes.String()))
+        /*
+            Read the incoming topic messages into a kafka stream and then
+            * Map values to remove un-wanted fields from the message
+            * change the key to filter-topic key.
+         */
+        KStream<String, String> incoming_stream = builder.stream(INPUT_TOPIC, Consumed.with(Serdes.String(), Serdes.String()))
                 .mapValues((String value) -> {
                     try {
                         JsonNode json = MAPPER.readTree(value);
@@ -140,7 +145,12 @@ public class SplunkStream {
                     }
                 })
                 .map((key, value) -> KeyValue.pair(value.get("deviceName").textValue() + value.get("indicatorName").textValue(), value.toString()));
-        KTable<String, String> invtable = sevonestream
+
+        /*
+           Convert the incoming topic stream to a KTable and materialize to a store
+            to reduce the size of the store just use the minial fields (the ones used for key)
+         */
+        KTable<String, String> incomingStreamToTable = incoming_stream
                 .mapValues((String value) -> {
                     try {
                         JsonNode json = MAPPER.readTree(value);
@@ -158,16 +168,17 @@ public class SplunkStream {
                 .groupByKey()
                 .reduce((aggValue, newValue) -> {
                     return newValue;
-                }, Materialized.<String, String, KeyValueStore<Bytes, byte[]>>as(INV_STORE_NAME).withKeySerde(Serdes.String())
+                }, Materialized.<String, String, KeyValueStore<Bytes, byte[]>>as(INCOMING_STORE_NAME).withKeySerde(Serdes.String())
                         .withValueSerde(Serdes.String()));
-        
-        
 
-        KTable<String, String> inventorytable = builder.table(SPLUNK_INVENTORY_TOPIC, 
-                Consumed.with(Serdes.String(), Serdes.String())
-                , Materialized.<String, String, KeyValueStore<Bytes, byte[]>>as(IND_STORE_NAME).withKeySerde(Serdes.String())
+        /*
+            Build a KTable from the filter-topic materialized as Store.
+         */
+        KTable<String, String> filtertable = builder.table(FILTER_TOPIC,
+                Consumed.with(Serdes.String(), Serdes.String()),
+                Materialized.<String, String, KeyValueStore<Bytes, byte[]>>as(OUTGOING_STORE_NAME).withKeySerde(Serdes.String())
                         .withValueSerde(Serdes.String()))
-                //KTable<String, String> inventorytable = builder.table(SPLUNK_INVENTORY_TOPIC, Consumed.with(Serdes.String(), Serdes.String()))
+                //KTable<String, String> inventorytable = builder.table(FILTER_TOPIC, Consumed.with(Serdes.String(), Serdes.String()))
                 //.filter((k, v) -> v != null)                
                 .mapValues((String value) -> {
                     try {
@@ -177,50 +188,61 @@ public class SplunkStream {
                         LOGGER.error(e);
                         return null;
                     }
-                })                
-                //.filter((k, v) -> (v.get("toSplunk").textValue().equalsIgnoreCase("true")))
+                })
                 .mapValues((k, v) -> {
                     System.out.println(v);
                     return v.toString();
                 });
 
-
-        inventorytable.toStream().peek((key, value) -> LOGGER.debug("New data into table key = "+key+" value ="+value))
+        /*
+            To Keep the store size minimal all disabled messages are deleted from the KTable, this is done by sending a null
+            value message to filter-topic
+         */
+        filtertable.toStream().peek((key, value) -> LOGGER.debug("New data into table key = " + key + " value =" + value))
                 .filter((k, v) -> {
-                    try {                        
+                    try {
                         JsonNode value = MAPPER.readTree(v);
-                        if ((value.get("toSplunk").textValue().equalsIgnoreCase("false"))) {
+                        if (!(value.get("enable").asBoolean())) {
                             return true;
                         } else {
                             return false;
                         }
-                    }
-                    catch (Exception ex) {
+                    } catch (Exception ex) {
                         //Logger.getLogger(StreamApp.class.getName()).log(Level.SEVERE, null, ex);
                         LOGGER.error(ex);
                         return false;
                     }
                 })
                 .mapValues((k, v) -> null)
-                .to(SPLUNK_INVENTORY_TOPIC);
+                .to(FILTER_TOPIC);
 
-        KStream<String, String> tosplunk = sevonestream.join(inventorytable, (String sevone, String inv) -> sevone,
+        /*
+            Filter the incoming stream by joining with the KT
+         */
+        KStream<String, String> filtered = incoming_stream.join(filtertable, (String incoming, String filter) -> incoming,
                 Joined.with(Serdes.String(), Serdes.String(), Serdes.String())
         );
-        tosplunk.to(SPLUNK_OUTPUT_TOPIC, Produced.with(Serdes.String(), Serdes.String()));
+
+        /*
+            Write the filtered stream to a topic        
+         */
+        filtered.to(OUTPUT_TOPIC, Produced.with(Serdes.String(), Serdes.String()));
+
         final Topology topology = builder.build();
-        splunkStream = new KafkaStreams(topology, props);
-        System.out.println("Stream created");
-        LOGGER.trace(splunkStream.toString());
-        splunkStream.setUncaughtExceptionHandler((Thread thread, Throwable throwable) -> {
+
+        filterStream = new KafkaStreams(topology, props);
+
+        LOGGER.trace(filterStream.toString());
+
+        filterStream.setUncaughtExceptionHandler((Thread thread, Throwable throwable) -> {
             // add logger
-            LOGGER.error("splunkStream Uncaught exception in Thread {0} - {1}", new Object[]{thread, throwable.getMessage()});
+            LOGGER.error("filterStream Uncaught exception in Thread {0} - {1}", new Object[]{thread, throwable.getMessage()});
             throwable.printStackTrace();
 
         });
-        splunkStream.start();
+        filterStream.start();
         System.out.println("Stream started");
-        return splunkStream;
+        return filterStream;
     }
 
     public static <T> T waitUntilStoreIsQueryable(final String storeName,

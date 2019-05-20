@@ -26,8 +26,8 @@ public final class TestUtils {
         testProp.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
         testProp.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
         testProp.put("input.topic", "sevone-test-topic");
-        testProp.put("splunk.inventory.topic","test-topic");
-        testProp.put("splunk.filtered.topic", "splunk-test-filtered-topic");
+        testProp.put("filter.topic","test-topic");
+        testProp.put("filtered.topic", "splunk-test-filtered-topic");
         return testProp;
     }
 }
