@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <groupId>com.spark.kafka</groupId>
-    <artifactId>splunkstream</artifactId>
+    <groupId>com.bp.kafka</groupId>
+    <artifactId>filterstream</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
+        <app.name>StreamFilterApp</app.name>
     </properties>
     <build>
         <pluginManagement>
@@ -37,7 +38,7 @@
                             <goal>copy-resources</goal>
                         </goals>
                         <configuration>
-                            <outputDirectory>${project.build.directory}/SplunkApp/conf</outputDirectory>
+                            <outputDirectory>${project.build.directory}/${app.name}/conf</outputDirectory>
                             <resources>
                                 <resource>
                                     <directory>src/resources/conf</directory>
@@ -54,7 +55,7 @@
                             <goal>copy-resources</goal>
                         </goals>
                         <configuration>
-                            <outputDirectory>${project.build.directory}/SplunkApp/bin</outputDirectory>
+                            <outputDirectory>${project.build.directory}/${app.name}/bin</outputDirectory>
                             <resources>
                                 <resource>
                                     <directory>src/resources/script</directory>
@@ -78,7 +79,7 @@
                             <goal>copy-dependencies</goal>
                         </goals>
                         <configuration>
-                            <outputDirectory>${project.build.directory}/SplunkApp/lib</outputDirectory>
+                            <outputDirectory>${project.build.directory}/${app.name}/lib</outputDirectory>
                             <overWriteReleases>false</overWriteReleases>
                             <overWriteSnapshots>false</overWriteSnapshots>
                             <overWriteIfNewer>true</overWriteIfNewer>
@@ -94,14 +95,14 @@
                         <manifest>
                             <addClasspath>true</addClasspath>
                             <classpathPrefix>lib/</classpathPrefix>
-                            <mainClass>com.spark.kafka.kstream.SplunkApp</mainClass>
+                            <mainClass>com.bp.kafka.kstream.StreamApp</mainClass>
                         </manifest>
                         <manifestEntries>
                             <Class-Path>.</Class-Path>
                         </manifestEntries>
                     </archive>
  
-                    <finalName>SplunkApp/SplunkStreamApp</finalName>
+                    <finalName>${app.name}/${app.name}</finalName>
                 </configuration>
             </plugin>
         </plugins>    
