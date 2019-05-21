@@ -3,7 +3,7 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package com.spark.kafka.kstream;
+package com.bp.kafka.kstream;
 
 import java.util.Properties;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -28,6 +28,8 @@ public final class TestUtils {
         testProp.put("input.topic", "sevone-test-topic");
         testProp.put("filter.topic","test-topic");
         testProp.put("filtered.topic", "splunk-test-filtered-topic");
+        testProp.put("message.fields","deviceName,indicatorName,deviceIp,objectName,objectDesc,time,value");
+        testProp.put("key.fields","deviceName,indicatorName");
         return testProp;
     }
 }

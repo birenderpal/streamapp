@@ -3,20 +3,16 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package com.spark.kafka.kstream;
+package com.bp.kafka.kstream;
 
+;
 import java.io.File;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
-import java.net.URI;
 import java.net.URLDecoder;
-import javax.ws.rs.core.UriBuilder;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.glassfish.jersey.server.ResourceConfig;
-import org.glassfish.grizzly.http.server.HttpServer;
-import org.glassfish.jersey.grizzly2.httpserver.GrizzlyHttpServerFactory;
 /**
  *
  * @author Birender Pal
@@ -37,38 +33,17 @@ public class StreamApp {
                 System.out.println(runType);
                 kstream = new FilterStream();
             case "dev":
-                kstream = new FilterStream(propFile, "filterapp", "localhost:9092", "dev-topic");
+                kstream = new FilterStream(propFile,appServer, "filterapp", "localhost:9092", "dev-topic");
             case "prod":
-                kstream = new FilterStream(propFile, appServer);
+                kstream = new FilterStream(propFile);
         }
         
 
         KafkaStreams streams = kstream.createFilterStream();
         System.out.println("Stream initiated");
-        Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
-            @Override
-            public void run() {
-                LOGGER.info("shutting down stream app...");
-                streams.close();
-            }
-        }));
-//        ServletContextHandler context
-//                = new ServletContextHandler(ServletContextHandler.);
-//        context.setContextPath("/");
-//
-//        Server jettyServer = new Server(port);
-//        ResourceConfig rc = new ResourceConfig(RestInterface.class);
-//        rc.register(RestInterface.class);
-//        //rc.register(JacksonFeature.class);
-//
-//        ServletContainer sc = new ServletContainer(rc);
-//        ServletHolder holder = new ServletHolder(sc);
-//        context.addServlet(holder, "/*");
-        URI baseUri = UriBuilder.fromUri("http://" + HOSTNAME + "/").port(port).build();
-        ResourceConfig rc = new ResourceConfig(RestInterface.class);
-        HttpServer server = GrizzlyHttpServerFactory.createHttpServer(baseUri, rc);
-        //jettyServer.start();
-        //final RestInterface restService = new RestInterface();
+
+        final RestInterface restService = new RestInterface();
+        restService.start();
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
             @Override
             public void run() {
@@ -77,7 +52,7 @@ public class StreamApp {
                     streams.close();
                     LOGGER.info("Kafka Stream services stopped");
 
-                    server.stop();
+                    restService.stop();
                     LOGGER.info("REST services stopped");
 
                 } catch (Exception ex) {

@@ -3,7 +3,7 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package com.spark.kafka.kstream;
+package com.bp.kafka.kstream;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,6 +12,10 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Properties;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.utils.Bytes;
@@ -45,6 +49,8 @@ public class FilterStream {
     private static String APPLICATION_ID_CONFIG;
     private static String BOOTSTRAP_SERVERS_CONFIG;
     private static String INPUT_TOPIC;
+    static List messageFields = new ArrayList();
+    static List keyFields = new ArrayList();
     static String INCOMING_STORE_NAME = System.getProperty("incoming.store", "incoming-store");
     static String OUTGOING_STORE_NAME = System.getProperty("outgoing.store", "filter-store");
     static KafkaStreams filterStream;
@@ -52,21 +58,27 @@ public class FilterStream {
     public FilterStream() {
         TestUtils test = new TestUtils();
         props = test.getProperties();
+        this.messageFields = Arrays.asList(props.getProperty("message.fields").split(","));
+        this.keyFields = Arrays.asList(props.getProperty("key.fields").split(","));
     }
 
-    public FilterStream(String propFile, String appServer) {
+    public FilterStream(String propFile) {
         this.propFile = propFile;
-        this.APPLICATION_SERVER_CONFIG = appServer;
         readProps();
+        this.APPLICATION_SERVER_CONFIG = props.getProperty("application.server");
         this.props.put(StreamsConfig.APPLICATION_SERVER_CONFIG, this.APPLICATION_SERVER_CONFIG);
+        this.messageFields = Arrays.asList(props.getProperty("message.fields").split(","));
+        this.keyFields = Arrays.asList(props.getProperty("key.fields").split(","));
     }
 
-    public FilterStream(String propFile, String appID, String brokers, String inputTopic) {
+    public FilterStream(String propFile, String appServer, String appID, String brokers, String inputTopic) {
         this.propFile = propFile;
         readProps();
         this.APPLICATION_ID_CONFIG = appID;
         this.INPUT_TOPIC = inputTopic;
         this.BOOTSTRAP_SERVERS_CONFIG = brokers;
+        this.messageFields = Arrays.asList("deviceName,indicatorName,deviceIp,objectName,objectDesc,time,value".split(","));
+        this.keyFields = Arrays.asList("deviceName,indicatorName".split(","));
     }
 
     private static void readProps() {
@@ -90,33 +102,12 @@ public class FilterStream {
     public KafkaStreams createFilterStream() {
         //readProps();        
         final ObjectMapper MAPPER = new ObjectMapper();
-        String FILTER_TOPIC = props.getProperty("filter.topic", "splunk-ggi-filter-list");
-        String OUTPUT_TOPIC = props.getProperty("filtered.topic", "splunk-filtered-topic");
+        String FILTER_TOPIC = props.getProperty("filter.topic", "filter-topic");
+        String OUTPUT_TOPIC = props.getProperty("filtered.topic", "outgoing-topic");
         INPUT_TOPIC = props.getProperty("input.topic");
         LOGGER.info("Building Stream with {}", INPUT_TOPIC);
         StreamsBuilder builder = new StreamsBuilder();
 
-//        KTable<String, String> invtable = builder.stream(INPUT_TOPIC, Consumed.with(Serdes.String(), Serdes.String()))
-//                .mapValues((String value) -> {
-//                    try {
-//                        JsonNode json = MAPPER.readTree(value);
-//                        ObjectNode returnJson = MAPPER.createObjectNode();
-//                        returnJson.put("deviceName", json.get("deviceName"));
-//                        returnJson.put("indicatorName", json.get("indicatorName"));
-//                        //returnJson.put("format", json.get("format"));                        
-//                        return MAPPER.readTree(returnJson.toString());
-//                    } catch (Exception e) {
-//                        // TODO Auto-generated catch block
-//                        LOGGER.error(e);
-//                        return null;
-//                    }
-//                })
-//                .map((key, value) -> KeyValue.pair(value.get("deviceName").textValue() + value.get("indicatorName").textValue(), value.toString()))
-//                .groupByKey()
-//                .reduce((aggValue, newValue) -> {
-//                    return newValue;
-//                }, Materialized.<String, String, KeyValueStore<Bytes, byte[]>>as(INCOMING_STORE_NAME).withKeySerde(Serdes.String())
-//                        .withValueSerde(Serdes.String()));
         /*
             Read the incoming topic messages into a kafka stream and then
             * Map values to remove un-wanted fields from the message
@@ -127,13 +118,11 @@ public class FilterStream {
                     try {
                         JsonNode json = MAPPER.readTree(value);
                         ObjectNode returnJson = MAPPER.createObjectNode();
-                        returnJson.put("deviceName", json.get("deviceName"));
-                        returnJson.put("indicatorName", json.get("indicatorName"));
-                        returnJson.put("objectName", json.get("objectName"));
-                        returnJson.put("deviceIp", json.get("deviceIp"));
-                        returnJson.put("objectDesc", json.get("objectDesc"));
-                        returnJson.put("value", json.get("value"));
-                        returnJson.put("time", json.get("time"));
+                        Iterator<String> iterator = messageFields.iterator();
+                        while (iterator.hasNext()) {
+                            String key = iterator.next();
+                            returnJson.put(key, json.get(key));
+                        }
                         //returnJson.put("format", json.get("format"));                        
                         return returnJson;
                     } catch (Exception e) {
@@ -144,7 +133,16 @@ public class FilterStream {
                         return null;
                     }
                 })
-                .map((key, value) -> KeyValue.pair(value.get("deviceName").textValue() + value.get("indicatorName").textValue(), value.toString()));
+                .map((key, value) -> {
+
+                    Iterator<String> iterator = keyFields.iterator();
+                    String updatedKey = "";
+                    while (iterator.hasNext()) {
+                        String kkey = iterator.next();
+                        updatedKey=updatedKey.concat(value.get(kkey).textValue());
+                    }                   
+                    return KeyValue.pair(updatedKey, value.toString());
+                });
 
         /*
            Convert the incoming topic stream to a KTable and materialize to a store
@@ -155,9 +153,11 @@ public class FilterStream {
                     try {
                         JsonNode json = MAPPER.readTree(value);
                         ObjectNode returnJson = MAPPER.createObjectNode();
-                        returnJson.put("deviceName", json.get("deviceName"));
-                        returnJson.put("indicatorName", json.get("indicatorName"));
-                        //returnJson.put("format", json.get("format"));                        
+                        Iterator<String> iterator = keyFields.iterator();
+                        while (iterator.hasNext()) {
+                            String key = iterator.next();
+                            returnJson.put(key, json.get(key));
+                        }                                                
                         return returnJson.toString();
                     } catch (Exception e) {
                         // TODO Auto-generated catch block
