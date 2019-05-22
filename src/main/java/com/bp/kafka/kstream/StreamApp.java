@@ -10,7 +10,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
+import java.util.Properties;
 import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.StreamsConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 /**
@@ -22,27 +24,43 @@ public class StreamApp {
     private static final String logDir = System.getProperty("app.log.dir");
     private static Logger LOGGER = LogManager.getLogger(StreamApp.class);
     private static String propFile;
-    private final static String HOSTNAME = "0.0.0.0";
-    static int port = 8000;
-
-    private static void app(String runType) throws IOException, Exception {
-        String appServer = HOSTNAME + ":" + Integer.toString(port);
-        FilterStream kstream=null;
+    private static Properties props = new Properties();
+    
+    /*
+    
+        Method to run the app without the property file and read configuration from Utils class.
+    
+    */
+    private static void app(String runType) throws IOException, Exception {         
+        Utils utils = new Utils();
         switch (runType) {
             case "test":
-                System.out.println(runType);
-                kstream = new FilterStream();
+                props = utils.getTestProperties();
+                FilterStream kstream = new FilterStream(props);
+                init(kstream);
+                break;
             case "dev":
-                kstream = new FilterStream(propFile,appServer, "filterapp", "localhost:9092", "dev-topic");
-            case "prod":
-                kstream = new FilterStream(propFile);
+                props = utils.getDevProperties();
+                kstream = new FilterStream(props);
+                init(kstream);
+                break;
         }
-        
 
+    }
+
+   private static void app() throws IOException, Exception {
+        Utils utils = new Utils(propFile);        //InputStream input = null;       
+        props = utils.getProperties();
+        FilterStream kstream=new FilterStream(props);        
+        init(kstream);
+    }     
+   
+   private static void init(FilterStream kstream) throws Exception{
         KafkaStreams streams = kstream.createFilterStream();
-        System.out.println("Stream initiated");
-
+        String[] restEndpoint = props.getProperty(StreamsConfig.APPLICATION_SERVER_CONFIG).split(":");        
         final RestInterface restService = new RestInterface();
+        restService.setHostname(restEndpoint[0].toString());
+        restService.setPort(Integer.parseInt(restEndpoint[1].toString()));
         restService.start();
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
             @Override
@@ -61,8 +79,9 @@ public class StreamApp {
                 }
             }
         }));
-    }
-
+       
+   }
+   
     public static void main(String[] args) throws Exception {
         if (args.length == 0) {
             //System.out.println("ERROR: No property file specified");
@@ -80,7 +99,13 @@ public class StreamApp {
 
         } else {
             propFile = args[0];
+            
         }
+
+        /*
+         In production to be run with app(propFile)
+        */        
+        LOGGER.info("app started with test configuraiton");
         app("test");
     }
 }

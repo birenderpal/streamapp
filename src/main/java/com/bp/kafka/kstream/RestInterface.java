@@ -29,56 +29,66 @@ import org.glassfish.jersey.server.ResourceConfig;
 
 /**
  *
- * @author t821012
+ * @author Birender Pal
  */
 @Path("/")
 public final class RestInterface {
+
     private final String incomingStoreName;
     private final String outgoingStoreName;
     private HttpServer server;
     private static final ObjectMapper MAPPER = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
-    private final static String HOSTNAME = "0.0.0.0";
-    static int port = 8000;
-    
+    private static String HOSTNAME;
+    static int port;
+
+    public RestInterface() {
+        incomingStoreName = FilterStream.INCOMING_STORE_NAME;
+        outgoingStoreName = FilterStream.OUTGOING_STORE_NAME;
+    }
+
+    public void setHostname(String HOSTNAME) {
+        this.HOSTNAME = HOSTNAME;
+    }
+
+    public void setPort(Integer port) {
+        this.port = port;
+    }
+
     private static final Logger LOGGER = LogManager.getLogger(RestInterface.class);
-    
+
     public void start() throws Exception {
         URI baseUri = UriBuilder.fromUri("http://" + HOSTNAME + "/").port(port).build();
         ResourceConfig rc = new ResourceConfig(RestInterface.class);
         server = GrizzlyHttpServerFactory.createHttpServer(baseUri, rc);
         //server.start();    
     }
-    
+
     public void stop() throws Exception {
         if (server != null) {
             server.stop();
         }
-    }    
-    public RestInterface(){
-        incomingStoreName=FilterStream.INCOMING_STORE_NAME;
-        outgoingStoreName=FilterStream.OUTGOING_STORE_NAME;
     }
+
     @GET
     @Produces(MediaType.TEXT_PLAIN)
     public String root_path() throws Exception {
         return "Home Page";
     }
-    
+
     @Path("/outgoing")
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     public JsonNode all_outgoing() throws Exception {
-        System.out.println("GET request for outgoing");
         LOGGER.debug("GET request for outgoing");
-        JsonNode json=null;
+        JsonNode json = null;
         //MAPPER.enable(SerializationFeature.INDENT_OUTPUT);
         try {
-            ArrayList<String> outgoing = new ArrayList<>() ;
+            ArrayList<String> outgoing = new ArrayList<>();
             //HostInfo hostInfo = new HostInfo("localhost",port);
             //System.out.println(storeName);
-            KafkaStreams ks = FilterStream.filterStream;           
+            KafkaStreams ks = FilterStream.filterStream;
             ReadOnlyKeyValueStore<String, String> outgoingStore = FilterStream.waitUntilStoreIsQueryable(outgoingStoreName, QueryableStoreTypes.keyValueStore(), ks);
-                    //ks.store(storeName, QueryableStoreTypes.<String,String>keyValueStore());
+            //ks.store(storeName, QueryableStoreTypes.<String,String>keyValueStore());
             KeyValueIterator<String, String> storeIterator = outgoingStore.all();
             //System.out.println(indStore.approximateNumEntries());
             while (storeIterator.hasNext()) {
@@ -86,45 +96,44 @@ public final class RestInterface {
                 //JsonNode json = MAPPER.readTree(kv.value); 
                 outgoing.add(kv.value);
             }
-            String message = "{\"outgoing\":"+outgoing.toString()+"}";
+            String message = "{\"outgoing\":" + outgoing.toString() + "}";
             //System.out.println(indicators);
             json = MAPPER.readTree(message);
-                    
-        } catch (IOException | InterruptedException e){
+
+        } catch (IOException | InterruptedException e) {
             LOGGER.error(e);
         }
         return json;
-        
+
     }
 
     @Path("/incoming")
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     public JsonNode all_incoming() throws Exception {
-        LOGGER.debug("GET for incoming");
-        JsonNode json=null;
+        LOGGER.debug("GET request for incoming");
+        JsonNode json = null;
         try {
-            ArrayList<String> incoming = new ArrayList<>() ;
+            ArrayList<String> incoming = new ArrayList<>();
             //HostInfo hostInfo = new HostInfo("localhost",port);
             //System.out.println(storeName);
             KafkaStreams ks = FilterStream.filterStream;
             ReadOnlyKeyValueStore<String, String> incomingStore = FilterStream.waitUntilStoreIsQueryable(incomingStoreName, QueryableStoreTypes.keyValueStore(), ks);
-                    //ks.store(storeName, QueryableStoreTypes.<String,String>keyValueStore());
+            //ks.store(storeName, QueryableStoreTypes.<String,String>keyValueStore());
             KeyValueIterator<String, String> storeIterator = incomingStore.all();
-            
+
             while (storeIterator.hasNext()) {
                 KeyValue<String, String> kv = storeIterator.next();
                 //JsonNode json = MAPPER.readTree(kv.value); 
                 incoming.add(kv.value);
             }
-            String message = "{\"incoming\":"+incoming.toString()+"}";
+            String message = "{\"incoming\":" + incoming.toString() + "}";
             //System.out.println(indicators);
-            json = MAPPER.readTree(message);                                                            
-        } catch (IOException | InterruptedException e){
+            json = MAPPER.readTree(message);
+        } catch (IOException | InterruptedException e) {
             LOGGER.error(e);
         }
         return json;
-        
-    }   
-}
 
+    }
+}

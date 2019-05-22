@@ -8,10 +8,6 @@ package com.bp.kafka.kstream;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -22,7 +18,6 @@ import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
-import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.errors.InvalidStateStoreException;
 import org.apache.kafka.streams.kstream.Consumed;
@@ -42,12 +37,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class FilterStream {
 
-    private static String propFile;
-    private static String APPLICATION_SERVER_CONFIG;
     private static Logger LOGGER = LogManager.getLogger(FilterStream.class);
     private static Properties props = new Properties();
-    private static String APPLICATION_ID_CONFIG;
-    private static String BOOTSTRAP_SERVERS_CONFIG;
     private static String INPUT_TOPIC;
     static List messageFields = new ArrayList();
     static List keyFields = new ArrayList();
@@ -55,48 +46,11 @@ public class FilterStream {
     static String OUTGOING_STORE_NAME = System.getProperty("outgoing.store", "filter-store");
     static KafkaStreams filterStream;
 
-    public FilterStream() {
-        TestUtils test = new TestUtils();
-        props = test.getProperties();
+    public FilterStream(Properties props) {
+        this.props = props;
+        LOGGER.debug("Properties Dump: ",props);
         this.messageFields = Arrays.asList(props.getProperty("message.fields").split(","));
         this.keyFields = Arrays.asList(props.getProperty("key.fields").split(","));
-    }
-
-    public FilterStream(String propFile) {
-        this.propFile = propFile;
-        readProps();
-        this.APPLICATION_SERVER_CONFIG = props.getProperty("application.server");
-        this.props.put(StreamsConfig.APPLICATION_SERVER_CONFIG, this.APPLICATION_SERVER_CONFIG);
-        this.messageFields = Arrays.asList(props.getProperty("message.fields").split(","));
-        this.keyFields = Arrays.asList(props.getProperty("key.fields").split(","));
-    }
-
-    public FilterStream(String propFile, String appServer, String appID, String brokers, String inputTopic) {
-        this.propFile = propFile;
-        readProps();
-        this.APPLICATION_ID_CONFIG = appID;
-        this.INPUT_TOPIC = inputTopic;
-        this.BOOTSTRAP_SERVERS_CONFIG = brokers;
-        this.messageFields = Arrays.asList("deviceName,indicatorName,deviceIp,objectName,objectDesc,time,value".split(","));
-        this.keyFields = Arrays.asList("deviceName,indicatorName".split(","));
-    }
-
-    private static void readProps() {
-        //InputStream input = null;
-        LOGGER.info("reading properties from file: {}", propFile);
-        try {
-            InputStream input = new FileInputStream(propFile);
-            props.load(input);
-            props.forEach((key, value) -> LOGGER.info(key + ":" + value));
-
-        } catch (FileNotFoundException e1) {
-            // Log for property file not found.            
-            //e1.printStackTrace();
-            LOGGER.error("property file {} not found", propFile);
-        } catch (IOException e) {
-            // Log for property file not loaded.
-            LOGGER.error(e);
-        }
     }
 
     public KafkaStreams createFilterStream() {
@@ -123,12 +77,8 @@ public class FilterStream {
                             String key = iterator.next();
                             returnJson.put(key, json.get(key));
                         }
-                        //returnJson.put("format", json.get("format"));                        
                         return returnJson;
                     } catch (Exception e) {
-                        // TODO Auto-generated catch block
-                        System.out.println(value);
-                        System.out.println(e);
                         LOGGER.error(e);
                         return null;
                     }
@@ -160,7 +110,6 @@ public class FilterStream {
                         }                                                
                         return returnJson.toString();
                     } catch (Exception e) {
-                        // TODO Auto-generated catch block
                         LOGGER.error(e);
                         return null;
                     }
@@ -178,8 +127,6 @@ public class FilterStream {
                 Consumed.with(Serdes.String(), Serdes.String()),
                 Materialized.<String, String, KeyValueStore<Bytes, byte[]>>as(OUTGOING_STORE_NAME).withKeySerde(Serdes.String())
                         .withValueSerde(Serdes.String()))
-                //KTable<String, String> inventorytable = builder.table(FILTER_TOPIC, Consumed.with(Serdes.String(), Serdes.String()))
-                //.filter((k, v) -> v != null)                
                 .mapValues((String value) -> {
                     try {
                         JsonNode json = MAPPER.readTree(value);
@@ -208,7 +155,6 @@ public class FilterStream {
                             return false;
                         }
                     } catch (Exception ex) {
-                        //Logger.getLogger(StreamApp.class.getName()).log(Level.SEVERE, null, ex);
                         LOGGER.error(ex);
                         return false;
                     }
@@ -241,6 +187,7 @@ public class FilterStream {
 
         });
         filterStream.start();
+        LOGGER.info("Stream Initiated");
         System.out.println("Stream started");
         return filterStream;
     }
