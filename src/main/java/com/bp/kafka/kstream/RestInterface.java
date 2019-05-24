@@ -40,6 +40,8 @@ public final class RestInterface {
     private static final ObjectMapper MAPPER = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
     private static String HOSTNAME;
     static int port;
+    private static final Logger LOGGER = LogManager.getLogger(RestInterface.class);
+    
 
     public RestInterface() {
         incomingStoreName = FilterStream.INCOMING_STORE_NAME;
@@ -54,9 +56,10 @@ public final class RestInterface {
         this.port = port;
     }
 
-    private static final Logger LOGGER = LogManager.getLogger(RestInterface.class);
 
     public void start() throws Exception {
+        LOGGER.info("Hostname for Rest service: "+HOSTNAME);
+        LOGGER.info("port for Rest service: "+port);
         URI baseUri = UriBuilder.fromUri("http://" + HOSTNAME + "/").port(port).build();
         ResourceConfig rc = new ResourceConfig(RestInterface.class);
         server = GrizzlyHttpServerFactory.createHttpServer(baseUri, rc);

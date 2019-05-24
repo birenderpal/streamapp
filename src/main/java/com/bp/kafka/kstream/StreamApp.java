@@ -49,7 +49,7 @@ public class StreamApp {
     }
 
    private static void app() throws IOException, Exception {
-        Utils utils = new Utils(propFile);        //InputStream input = null;       
+        Utils utils = new Utils(propFile);        
         props = utils.getProperties();
         FilterStream kstream=new FilterStream(props);        
         init(kstream);
@@ -105,7 +105,9 @@ public class StreamApp {
         /*
          In production to be run with app(propFile)
         */        
-        LOGGER.info("app started with test configuraiton");
-        app("test");
+        app();
+        
+        //LOGGER.info("app started with test configuraiton");
+       // app("test");
     }
 }
