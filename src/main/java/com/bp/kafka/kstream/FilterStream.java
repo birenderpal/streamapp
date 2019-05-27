@@ -137,7 +137,7 @@ public class FilterStream {
                     }
                 })
                 .mapValues((k, v) -> {
-                    System.out.println(v);
+                    LOGGER.debug(v);
                     return v.toString();
                 });
 
