@@ -48,7 +48,7 @@ public class FilterStream {
 
     public FilterStream(Properties props) {
         this.props = props;
-        LOGGER.debug("Properties Dump: ",props);
+        LOGGER.debug("Properties Dump: ", props);
         this.messageFields = Arrays.asList(props.getProperty("message.fields").split(","));
         this.keyFields = Arrays.asList(props.getProperty("key.fields").split(","));
     }
@@ -75,28 +75,41 @@ public class FilterStream {
                         Iterator<String> iterator = messageFields.iterator();
                         while (iterator.hasNext()) {
                             String key = iterator.next();
-                            returnJson.put(key, json.get(key));
+                            returnJson.set(key, json.get(key));                            
                         }
                         return returnJson;
                     } catch (Exception e) {
                         LOGGER.error(e);
-                        return null;
+                        LOGGER.error("Exception handling value: "+value);
+                        ObjectNode returnJson = MAPPER.createObjectNode();
+                        Iterator<String> iterator = messageFields.iterator();
+                        while (iterator.hasNext()) {
+                            String key = iterator.next();
+                            returnJson.set(key, null);                            
+                        }
+                        LOGGER.error("Would return value as: "+returnJson.toString());
+                        return returnJson;                        
                     }
                 })
                 .map((key, value) -> {
-
-                    Iterator<String> iterator = keyFields.iterator();
-                    String updatedKey = "";
-                    while (iterator.hasNext()) {
-                        String kkey = iterator.next();
-                        updatedKey=updatedKey.concat(value.get(kkey).textValue());
-                    }                   
-                    return KeyValue.pair(updatedKey, value.toString());
+                    try {
+                        Iterator<String> iterator = keyFields.iterator();
+                        String updatedKey = "";
+                        while (iterator.hasNext()) {
+                            String kkey = iterator.next();
+                            updatedKey = updatedKey.concat(value.get(kkey).textValue());
+                        }
+                        return KeyValue.pair(updatedKey, value.toString());
+                    } catch (Exception e) {
+                        LOGGER.error("Exception handling key: "+key+" value: "+value);
+                        LOGGER.error(e);
+                        return KeyValue.pair(key, value.toString());
+                    }
                 });
 
         /*
            Convert the incoming topic stream to a KTable and materialize to a store
-            to reduce the size of the store just use the minial fields (the ones used for key)
+            to reduce the size of the store just use the minimal fields (the ones used for key)
          */
         KTable<String, String> incomingStreamToTable = incoming_stream
                 .mapValues((String value) -> {
@@ -106,12 +119,13 @@ public class FilterStream {
                         Iterator<String> iterator = keyFields.iterator();
                         while (iterator.hasNext()) {
                             String key = iterator.next();
-                            returnJson.put(key, json.get(key));
-                        }                                                
+                            returnJson.set(key, json.get(key));
+                        }
                         return returnJson.toString();
                     } catch (Exception e) {
+                        LOGGER.error("Exception handling value: "+value);
                         LOGGER.error(e);
-                        return null;
+                        return value;
                     }
                 })
                 .groupByKey()
@@ -132,7 +146,8 @@ public class FilterStream {
                         JsonNode json = MAPPER.readTree(value);
                         return json;
                     } catch (Exception e) {
-                        LOGGER.error(e);
+                        LOGGER.error("Exception handling value: "+value);
+                        LOGGER.error(e);                        
                         return null;
                     }
                 })
@@ -156,6 +171,7 @@ public class FilterStream {
                         }
                     } catch (Exception ex) {
                         LOGGER.error(ex);
+                        LOGGER.error("Exception handling value: "+v);
                         return false;
                     }
                 })
@@ -182,9 +198,13 @@ public class FilterStream {
 
         filterStream.setUncaughtExceptionHandler((Thread thread, Throwable throwable) -> {
             // add logger
+            LOGGER.error(throwable);
             LOGGER.error("filterStream Uncaught exception in Thread {0} - {1}", new Object[]{thread, throwable.getMessage()});
             throwable.printStackTrace();
-
+            LOGGER.warn("Stream shutting down following the exception..");
+            filterStream.close();
+            LOGGER.info("trying to recover stream..");
+            filterStream.start();
         });
         filterStream.start();
         LOGGER.info("Stream Initiated");
