@@ -11,27 +11,31 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.util.Properties;
+import java.util.logging.Level;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
 /**
  *
  * @author Birender Pal
  */
+
+
 public class StreamApp {
 
     private static final String logDir = System.getProperty("app.log.dir");
     private static Logger LOGGER = LogManager.getLogger(StreamApp.class);
     private static String propFile;
     private static Properties props = new Properties();
-    
+
     /*
     
         Method to run the app without the property file and read configuration from Utils class.
     
-    */
-    private static void app(String runType) throws IOException, Exception {         
+     */
+    private static void app(String runType) throws IOException, Exception {
         Utils utils = new Utils();
         switch (runType) {
             case "test":
@@ -48,20 +52,20 @@ public class StreamApp {
 
     }
 
-   private static void app() throws IOException, Exception {
-        Utils utils = new Utils(propFile);        
+    private static void app() throws IOException, Exception {
+        Utils utils = new Utils(propFile);
         props = utils.getProperties();
-        FilterStream kstream=new FilterStream(props);        
+        FilterStream kstream = new FilterStream(props);
         init(kstream);
-    }     
-   
-   private static void init(FilterStream kstream) throws Exception{
+    }
+
+    private static void init(FilterStream kstream) throws Exception {
         KafkaStreams streams = kstream.createFilterStream();
-        String[] restEndpoint = props.getProperty(StreamsConfig.APPLICATION_SERVER_CONFIG).split(":");        
+        String[] restEndpoint = props.getProperty(StreamsConfig.APPLICATION_SERVER_CONFIG).split(":");
         final RestInterface restService = new RestInterface();
         restService.setHostname(restEndpoint[0].toString());
         restService.setPort(Integer.parseInt(restEndpoint[1].toString()));
-        restService.start();
+        
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
             @Override
             public void run() {
@@ -79,9 +83,35 @@ public class StreamApp {
                 }
             }
         }));
-       
-   }
-   
+
+        streams.setUncaughtExceptionHandler((Thread thread, Throwable throwable) -> {
+            // add logger
+            LOGGER.error(throwable);
+            LOGGER.error("filterStream Uncaught exception in Thread {0} - {1}", new Object[]{thread, throwable.getMessage()});
+            throwable.printStackTrace();
+            LOGGER.warn("Stream shutting down following the exception..");
+            streams.close();
+            try {
+                restService.stop();
+            } catch (Exception e) {
+                LOGGER.error(e::getMessage);
+            }
+            LOGGER.info("trying to recover stream..");
+            streams.start();
+            try {
+                restService.start();
+            } catch (Exception ex) {
+                LOGGER.error(ex);
+            }
+        });
+        LOGGER.info("Initiating streams");
+        streams.start();
+        System.out.println("Stream initiated");
+        LOGGER.info("Starting REST service");
+        restService.start();
+        System.out.println("REST server started");
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length == 0) {
             //System.out.println("ERROR: No property file specified");
@@ -99,15 +129,15 @@ public class StreamApp {
 
         } else {
             propFile = args[0];
-            
+
         }
 
         /*
          In production to be run with app(propFile)
-        */        
+         */
         app();
-        
+
         //LOGGER.info("app started with test configuraiton");
-       // app("test");
+        // app("test");
     }
 }

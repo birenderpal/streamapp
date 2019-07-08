@@ -195,20 +195,6 @@ public class FilterStream {
         filterStream = new KafkaStreams(topology, props);
 
         LOGGER.trace(filterStream.toString());
-
-        filterStream.setUncaughtExceptionHandler((Thread thread, Throwable throwable) -> {
-            // add logger
-            LOGGER.error(throwable);
-            LOGGER.error("filterStream Uncaught exception in Thread {0} - {1}", new Object[]{thread, throwable.getMessage()});
-            throwable.printStackTrace();
-            LOGGER.warn("Stream shutting down following the exception..");
-            filterStream.close();
-            LOGGER.info("trying to recover stream..");
-            filterStream.start();
-        });
-        filterStream.start();
-        LOGGER.info("Stream Initiated");
-        System.out.println("Stream started");
         return filterStream;
     }
 
